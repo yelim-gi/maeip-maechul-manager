@@ -5,7 +5,7 @@ export default async function handler(req, res) {
 
   try {
     const apiKey = process.env.GEMINI_API_KEY
-    const model = process.env.GEMINI_MODEL || 'gemini-2.0-flash'
+    const model = process.env.GEMINI_MODEL || 'gemini-2.5-flash'
 
     if (!apiKey) {
       return res.status(500).json({ error: 'GEMINI_API_KEY가 설정되지 않았습니다.' })
@@ -19,8 +19,38 @@ export default async function handler(req, res) {
 
     const prompt = `
 너는 개인사업자 매입매출 증빙관리 사이트의 문서 분석 보조야.
-거래명세서, 영수증, 세금계산서, 일본어 인보이스에서 필요한 정보를 추출해.
+거래명세서, 영수증, 세금계산서, 현금영수증, 인보이스, 일본어 명세서에서 필요한 정보를 추출해.
+
 반드시 JSON만 반환해.
+설명 문장 금지.
+마크다운 코드블록 금지.
+
+JSON 형식:
+{
+  "documentType": "거래명세서",
+  "vendor": "거래처명",
+  "documentDate": "YYYY-MM-DD",
+  "currency": "KRW 또는 JPY",
+  "subtotal": 0,
+  "vat": 0,
+  "shippingFee": 0,
+  "customsDuty": 0,
+  "totalAmount": 0,
+  "categorySuggestion": "상품매입",
+  "confidence": 0,
+  "warnings": [],
+  "items": [
+    {
+      "nameOriginal": "원문 품목명",
+      "nameKo": "한국어 요약명",
+      "quantity": 0,
+      "unitPrice": 0,
+      "amount": 0
+    }
+  ]
+}
+
+파일명: ${fileName || '직접입력'}
 `
 
     const parts = [{ text: prompt }]
@@ -65,15 +95,35 @@ export default async function handler(req, res) {
       })
     }
 
-    const resultText =
-      data?.candidates?.[0]?.content?.parts?.[0]?.text || '{}'
+    const resultText = data?.candidates?.[0]?.content?.parts?.[0]?.text || '{}'
 
-    let result = {}
+    let cleanText = resultText.trim()
+    cleanText = cleanText.replace(/^```json/i, '')
+    cleanText = cleanText.replace(/^```/i, '')
+    cleanText = cleanText.replace(/```$/i, '')
+    cleanText = cleanText.trim()
+
+    let result
 
     try {
-      result = JSON.parse(resultText)
+      result = JSON.parse(cleanText)
     } catch {
-      result = { raw: resultText }
+      result = {
+        documentType: '기타',
+        vendor: '',
+        documentDate: '',
+        currency: 'KRW',
+        subtotal: 0,
+        vat: 0,
+        shippingFee: 0,
+        customsDuty: 0,
+        totalAmount: 0,
+        categorySuggestion: '확인필요',
+        confidence: 0,
+        warnings: ['JSON 파싱 실패: raw 값을 확인하세요.'],
+        items: [],
+        raw: resultText
+      }
     }
 
     return res.status(200).json({ result })

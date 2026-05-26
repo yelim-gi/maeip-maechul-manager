@@ -24,10 +24,7 @@ const navItems = [
 function fileToBase64(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
-    reader.onload = () => {
-      const result = String(reader.result || '')
-      resolve(result.split(',')[1] || '')
-    }
+    reader.onload = () => resolve(String(reader.result || '').split(',')[1] || '')
     reader.onerror = reject
     reader.readAsDataURL(file)
   })
@@ -102,7 +99,7 @@ export default function App() {
         </nav>
 
         <div className="sidebarHint">
-          <b>Gemini 무료 사용 모드</b>
+          <b>Gemini 2.5 Flash</b>
           <span>문서 분석은 필요할 때만 실행하세요.</span>
         </div>
       </aside>
@@ -215,7 +212,6 @@ function UploadCenter({ transactions, documents, rules, updateTransactions, upda
     const normalized = normalizeImportedRows(rows, rules)
     updateTransactions([...normalized, ...transactions])
     alert(`${normalized.length}건의 거래내역을 불러왔습니다.`)
-
     e.target.value = ''
   }
 
@@ -224,16 +220,13 @@ function UploadCenter({ transactions, documents, rules, updateTransactions, upda
     if (!file) return
 
     setSelectedFile(file)
-
     setFileInfo({
       name: file.name,
       type: file.type || 'application/octet-stream',
       size: file.size
     })
-
     setAnalysis(null)
     alert(`${file.name} 업로드 완료`)
-
     e.target.value = ''
   }
 
@@ -247,20 +240,18 @@ function UploadCenter({ transactions, documents, rules, updateTransactions, upda
     setAnalysis(null)
 
     try {
-      let body = {}
+      let body
 
       if (selectedFile) {
-        const base64 = await fileToBase64(selectedFile)
-
         body = {
           fileName: selectedFile.name,
           mimeType: selectedFile.type || 'application/octet-stream',
-          base64
+          base64: await fileToBase64(selectedFile)
         }
       } else {
         body = {
           text: rawText,
-          fileName: fileInfo?.name || '직접입력',
+          fileName: '직접입력',
           mimeType: 'text/plain'
         }
       }
@@ -309,7 +300,7 @@ function UploadCenter({ transactions, documents, rules, updateTransactions, upda
     }
 
     updateDocuments([doc, ...documents])
-    alert('증빙 문서를 저장했습니다. 매칭 검토 화면에서 거래내역과 연결하세요.')
+    alert('증빙 문서를 저장했습니다.')
   }
 
   return (
@@ -317,7 +308,7 @@ function UploadCenter({ transactions, documents, rules, updateTransactions, upda
       <div className="grid two">
         <div className="panel uploadBox">
           <h3>거래내역 업로드</h3>
-          <p>카드, 통장, 스마트스토어 정산내역 CSV/XLSX를 올리면 거래내역으로 변환합니다.</p>
+          <p>카드, 통장, 스마트스토어 정산내역 CSV/XLSX를 올립니다.</p>
           <label className="fileButton">
             CSV/XLSX 선택
             <input type="file" accept=".csv,.xlsx,.xls" onChange={handleSheetUpload} hidden />
@@ -326,7 +317,7 @@ function UploadCenter({ transactions, documents, rules, updateTransactions, upda
 
         <div className="panel uploadBox">
           <h3>증빙/거래명세서 분석</h3>
-          <p>일본어 명세서, 영수증, 인보이스 PDF/이미지를 Gemini로 정리합니다.</p>
+          <p>일본어 명세서, 영수증, 인보이스 PDF/이미지를 Gemini 2.5 Flash로 정리합니다.</p>
           <label className="fileButton">
             파일 선택
             <input type="file" accept=".txt,.csv,.pdf,.jpg,.jpeg,.png,.webp" onChange={handleDocumentFile} hidden />
@@ -336,7 +327,7 @@ function UploadCenter({ transactions, documents, rules, updateTransactions, upda
             <div className="fileInfo">
               <b>선택된 파일</b>
               <span>{fileInfo.name}</span>
-              <small>{fileInfo.type || 'unknown'} / {(fileInfo.size / 1024).toFixed(1)}KB</small>
+              <small>{fileInfo.type} / {(fileInfo.size / 1024).toFixed(1)}KB</small>
             </div>
           )}
         </div>
@@ -353,7 +344,7 @@ function UploadCenter({ transactions, documents, rules, updateTransactions, upda
           className="bigText"
           value={rawText}
           onChange={e => setRawText(e.target.value)}
-          placeholder="파일 분석이 안 될 때만 거래명세서 텍스트, OCR 결과, 일본어 인보이스 내용을 붙여넣으세요."
+          placeholder="파일 분석이 안 될 때만 텍스트를 붙여넣으세요."
         />
       </div>
 
@@ -370,7 +361,7 @@ function UploadCenter({ transactions, documents, rules, updateTransactions, upda
             <Info label="날짜" value={analysis.documentDate || analysis.document_date} />
             <Info label="통화" value={analysis.currency} />
             <Info label="총액" value={formatWon(analysis.totalAmount || analysis.total_amount)} />
-            <Info label="부가세/소비세" value={formatWon(analysis.vat)} />
+            <Info label="부가세" value={formatWon(analysis.vat)} />
             <Info label="배송비" value={formatWon(analysis.shippingFee || analysis.shipping_fee)} />
             <Info label="신뢰도" value={analysis.confidence} />
           </div>
@@ -413,10 +404,6 @@ function TransactionsPage({ month, transactions, updateTransactions, query }) {
     ])
 
     setForm({ ...form, vendor: '', title: '', amount: '', vat: '', memo: '' })
-  }
-
-  function remove(id) {
-    updateTransactions(transactions.filter(t => t.id !== id))
   }
 
   return (
@@ -471,7 +458,7 @@ function TransactionsPage({ month, transactions, updateTransactions, query }) {
                 <td>{t.category}</td>
                 <td>{formatWon(t.amount)}</td>
                 <td><Badge status={t.evidence_status} /></td>
-                <td><button className="ghost" onClick={() => remove(t.id)}>삭제</button></td>
+                <td><button className="ghost" onClick={() => updateTransactions(transactions.filter(x => x.id !== t.id))}>삭제</button></td>
               </tr>
             ))}
           </tbody>
@@ -486,16 +473,13 @@ function MatchingPage({ month, transactions, documents, updateTransactions, upda
   const monthDocs = documents.filter(d => getMonth(d.document_date) === month)
 
   function match(txId, docId) {
-    const rows = transactions.map(t =>
+    updateTransactions(transactions.map(t =>
       t.id === txId ? { ...t, matched_document_id: docId, evidence_status: 'done' } : t
-    )
+    ))
 
-    const docs = documents.map(d =>
+    updateDocuments(documents.map(d =>
       d.id === docId ? { ...d, status: 'matched' } : d
-    )
-
-    updateTransactions(rows)
-    updateDocuments(docs)
+    ))
   }
 
   return (
@@ -551,22 +535,16 @@ function MatchingPage({ month, transactions, documents, updateTransactions, upda
 
 function ReportsPage({ month, transactions, documents, summary }) {
   function download() {
-    const txRows = transactions.filter(t => getMonth(t.transaction_date) === month)
-    const docRows = documents.filter(d => getMonth(d.document_date) === month)
-
-    const summaryRows = [{
-      월: month,
-      매출: summary.income,
-      매입비용: summary.expense,
-      예상순이익: summary.profit,
-      증빙누락건수: summary.noEvidence,
-      확인필요문서: summary.needsReview
-    }]
-
     exportExcel(`${month}_매입매출_증빙관리.xlsx`, {
-      요약: summaryRows,
-      거래내역: txRows,
-      증빙문서: docRows
+      요약: [{
+        월: month,
+        매출: summary.income,
+        매입비용: summary.expense,
+        예상순이익: summary.profit,
+        증빙누락건수: summary.noEvidence
+      }],
+      거래내역: transactions.filter(t => getMonth(t.transaction_date) === month),
+      증빙문서: documents.filter(d => getMonth(d.document_date) === month)
     })
   }
 
@@ -590,7 +568,7 @@ function ReportsPage({ month, transactions, documents, summary }) {
 
       <div className="panel notice">
         <AlertTriangle size={20} />
-        <p>세금 계산은 참고용입니다. 실제 신고 전에는 세무사 또는 홈택스 기준으로 확인하세요.</p>
+        <p>세금 계산은 참고용입니다.</p>
       </div>
     </section>
   )
@@ -606,7 +584,6 @@ function SettingsPage({ rules, updateRules }) {
 
   function addRule() {
     if (!form.vendor_keyword) return
-
     updateRules([{ ...form, id: uid() }, ...rules])
     setForm({ vendor_keyword: '', default_category: '확인필요', default_type: 'expense', memo: '' })
   }
