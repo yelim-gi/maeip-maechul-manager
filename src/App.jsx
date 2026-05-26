@@ -21,6 +21,18 @@ const navItems = [
   { id: 'settings', label: '설정', icon: Settings }
 ]
 
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => {
+      const result = String(reader.result || '')
+      resolve(result.split(',')[1] || '')
+    }
+    reader.onerror = reject
+    reader.readAsDataURL(file)
+  })
+}
+
 export default function App() {
   const [page, setPage] = useState('dashboard')
   const [month, setMonth] = useState(currentMonth())
@@ -191,28 +203,43 @@ function Metric({ title, value, tone }) {
 function UploadCenter({ transactions, documents, rules, updateTransactions, updateDocuments }) {
   const [rawText, setRawText] = useState('')
   const [fileInfo, setFileInfo] = useState(null)
+  const [selectedFile, setSelectedFile] = useState(null)
   const [analysis, setAnalysis] = useState(null)
   const [loading, setLoading] = useState(false)
 
   async function handleSheetUpload(e) {
     const file = e.target.files?.[0]
     if (!file) return
+
     const rows = await readSpreadsheet(file)
     const normalized = normalizeImportedRows(rows, rules)
     updateTransactions([...normalized, ...transactions])
     alert(`${normalized.length}건의 거래내역을 불러왔습니다.`)
+
+    e.target.value = ''
   }
 
   async function handleDocumentFile(e) {
     const file = e.target.files?.[0]
     if (!file) return
-    
-    setFileInfo({ name: file.name, type: file.type })
+
+    setSelectedFile(file)
+
+    setFileInfo({
+      name: file.name,
+      type: file.type || 'application/octet-stream',
+      size: file.size
+    })
+
+    setAnalysis(null)
+    alert(`${file.name} 업로드 완료`)
+
+    e.target.value = ''
   }
 
   async function analyzeWithGemini() {
-    if (!rawText.trim()) {
-      alert('분석할 텍스트가 없습니다. OCR 텍스트나 명세서 내용을 붙여넣어 주세요.')
+    if (!selectedFile && !rawText.trim()) {
+      alert('파일을 먼저 업로드하거나 텍스트를 입력해주세요.')
       return
     }
 
@@ -220,14 +247,38 @@ function UploadCenter({ transactions, documents, rules, updateTransactions, upda
     setAnalysis(null)
 
     try {
+      let body = {}
+
+      if (selectedFile) {
+        const base64 = await fileToBase64(selectedFile)
+
+        body = {
+          fileName: selectedFile.name,
+          mimeType: selectedFile.type || 'application/octet-stream',
+          base64
+        }
+      } else {
+        body = {
+          text: rawText,
+          fileName: fileInfo?.name || '직접입력',
+          mimeType: 'text/plain'
+        }
+      }
+
       const res = await fetch('/api/analyze-document', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: rawText, fileName: fileInfo?.name, mimeType: fileInfo?.type })
+        body: JSON.stringify(body)
       })
+
       const data = await res.json()
-      if (!res.ok) throw new Error(data.error || '분석 실패')
-      setAnalysis(data)
+
+      if (!res.ok) {
+        throw new Error(data.error || '분석 실패')
+      }
+
+      setAnalysis(data.result || data)
+      alert('Gemini 분석 완료')
     } catch (err) {
       alert(err.message)
     } finally {
@@ -237,19 +288,20 @@ function UploadCenter({ transactions, documents, rules, updateTransactions, upda
 
   function saveAnalysis() {
     if (!analysis) return
+
     const doc = {
       id: uid(),
       file_name: fileInfo?.name || '직접입력 문서',
       file_type: fileInfo?.type || 'text/plain',
       file_url: '',
-      doc_type: analysis.doc_type || '기타',
+      doc_type: analysis.documentType || analysis.doc_type || '기타',
       vendor: analysis.vendor || '',
-      document_date: analysis.document_date || new Date().toISOString().slice(0, 10),
-      total_amount: Number(analysis.total_amount || 0),
-      supply_amount: Number(analysis.supply_amount || 0),
+      document_date: analysis.documentDate || analysis.document_date || new Date().toISOString().slice(0, 10),
+      total_amount: Number(analysis.totalAmount || analysis.total_amount || 0),
+      supply_amount: Number(analysis.subtotal || analysis.supply_amount || 0),
       vat: Number(analysis.vat || 0),
-      shipping_fee: Number(analysis.shipping_fee || 0),
-      duty_tax: Number(analysis.duty_tax || 0),
+      shipping_fee: Number(analysis.shippingFee || analysis.shipping_fee || 0),
+      duty_tax: Number(analysis.customsDuty || analysis.duty_tax || 0),
       currency: analysis.currency || 'KRW',
       exchange_rate: 1,
       extracted_json: analysis,
@@ -274,11 +326,19 @@ function UploadCenter({ transactions, documents, rules, updateTransactions, upda
 
         <div className="panel uploadBox">
           <h3>증빙/거래명세서 분석</h3>
-          <p>일본어 명세서, 영수증, 인보이스 내용을 Gemini로 정리합니다.</p>
+          <p>일본어 명세서, 영수증, 인보이스 PDF/이미지를 Gemini로 정리합니다.</p>
           <label className="fileButton">
             파일 선택
-            <input type="file" accept=".txt,.csv,.pdf,.jpg,.jpeg,.png" onChange={handleDocumentFile} hidden />
+            <input type="file" accept=".txt,.csv,.pdf,.jpg,.jpeg,.png,.webp" onChange={handleDocumentFile} hidden />
           </label>
+
+          {fileInfo && (
+            <div className="fileInfo">
+              <b>선택된 파일</b>
+              <span>{fileInfo.name}</span>
+              <small>{fileInfo.type || 'unknown'} / {(fileInfo.size / 1024).toFixed(1)}KB</small>
+            </div>
+          )}
         </div>
       </div>
 
@@ -293,7 +353,7 @@ function UploadCenter({ transactions, documents, rules, updateTransactions, upda
           className="bigText"
           value={rawText}
           onChange={e => setRawText(e.target.value)}
-          placeholder="거래명세서 텍스트, OCR 결과, 일본어 인보이스 내용을 붙여넣으세요."
+          placeholder="파일 분석이 안 될 때만 거래명세서 텍스트, OCR 결과, 일본어 인보이스 내용을 붙여넣으세요."
         />
       </div>
 
@@ -305,13 +365,13 @@ function UploadCenter({ transactions, documents, rules, updateTransactions, upda
           </div>
 
           <div className="formGrid">
-            <Info label="문서종류" value={analysis.doc_type} />
+            <Info label="문서종류" value={analysis.documentType || analysis.doc_type} />
             <Info label="거래처" value={analysis.vendor} />
-            <Info label="날짜" value={analysis.document_date} />
+            <Info label="날짜" value={analysis.documentDate || analysis.document_date} />
             <Info label="통화" value={analysis.currency} />
-            <Info label="총액" value={formatWon(analysis.total_amount)} />
+            <Info label="총액" value={formatWon(analysis.totalAmount || analysis.total_amount)} />
             <Info label="부가세/소비세" value={formatWon(analysis.vat)} />
-            <Info label="배송비" value={formatWon(analysis.shipping_fee)} />
+            <Info label="배송비" value={formatWon(analysis.shippingFee || analysis.shipping_fee)} />
             <Info label="신뢰도" value={analysis.confidence} />
           </div>
 
@@ -346,7 +406,12 @@ function TransactionsPage({ month, transactions, updateTransactions, query }) {
       alert('금액을 입력해주세요.')
       return
     }
-    updateTransactions([{ ...form, id: uid(), amount: Number(form.amount), vat: Number(form.vat || 0) }, ...transactions])
+
+    updateTransactions([
+      { ...form, id: uid(), amount: Number(form.amount), vat: Number(form.vat || 0) },
+      ...transactions
+    ])
+
     setForm({ ...form, vendor: '', title: '', amount: '', vat: '', memo: '' })
   }
 
@@ -424,9 +489,11 @@ function MatchingPage({ month, transactions, documents, updateTransactions, upda
     const rows = transactions.map(t =>
       t.id === txId ? { ...t, matched_document_id: docId, evidence_status: 'done' } : t
     )
+
     const docs = documents.map(d =>
       d.id === docId ? { ...d, status: 'matched' } : d
     )
+
     updateTransactions(rows)
     updateDocuments(docs)
   }
@@ -450,7 +517,9 @@ function MatchingPage({ month, transactions, documents, updateTransactions, upda
               const candidates = monthDocs
                 .map(d => ({ d, cmp: compareAmount(t.amount, d.total_amount, 1000) }))
                 .sort((a, b) => Math.abs(a.cmp.diff) - Math.abs(b.cmp.diff))
+
               const best = candidates[0]
+
               if (!best) {
                 return (
                   <tr key={t.id}>
@@ -462,6 +531,7 @@ function MatchingPage({ month, transactions, documents, updateTransactions, upda
                   </tr>
                 )
               }
+
               return (
                 <tr key={t.id}>
                   <td>{t.transaction_date} / {t.vendor} / {formatWon(t.amount)}</td>
@@ -483,6 +553,7 @@ function ReportsPage({ month, transactions, documents, summary }) {
   function download() {
     const txRows = transactions.filter(t => getMonth(t.transaction_date) === month)
     const docRows = documents.filter(d => getMonth(d.document_date) === month)
+
     const summaryRows = [{
       월: month,
       매출: summary.income,
@@ -491,6 +562,7 @@ function ReportsPage({ month, transactions, documents, summary }) {
       증빙누락건수: summary.noEvidence,
       확인필요문서: summary.needsReview
     }]
+
     exportExcel(`${month}_매입매출_증빙관리.xlsx`, {
       요약: summaryRows,
       거래내역: txRows,
@@ -534,6 +606,7 @@ function SettingsPage({ rules, updateRules }) {
 
   function addRule() {
     if (!form.vendor_keyword) return
+
     updateRules([{ ...form, id: uid() }, ...rules])
     setForm({ vendor_keyword: '', default_category: '확인필요', default_type: 'expense', memo: '' })
   }
@@ -605,8 +678,15 @@ function Badge({ status }) {
     needs_review: ['확인필요', 'warn'],
     '': ['미확인', 'warn']
   }
+
   const [label, tone] = map[status] || [status, 'warn']
-  return <span className={`badge ${tone}`}>{tone === 'ok' ? <CheckCircle2 size={13} /> : null}{label}</span>
+
+  return (
+    <span className={`badge ${tone}`}>
+      {tone === 'ok' ? <CheckCircle2 size={13} /> : null}
+      {label}
+    </span>
+  )
 }
 
 function Info({ label, value }) {
