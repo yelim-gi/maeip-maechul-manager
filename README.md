@@ -1,35 +1,28 @@
-# 매입매출 증빙관리 시스템
-
-ZIP을 풀면 최상단에 바로 아래 파일들이 있어야 합니다.
-
-- `api`
-- `src`
-- `package.json`
-- `vite.config.js`
-- `index.html`
+# 매입매출 증빙관리 - Vercel 배포용
 
 ## Vercel 환경변수
+Vercel Project Settings > Environment Variables에 아래 3개를 추가하세요.
 
-```env
-GEMINI_API_KEY=발급받은키
-GEMINI_MODEL=gemini-2.5-flash
-```
+- `GEMINI_API_KEY`
+- `SUPABASE_URL`
+- `SUPABASE_ANON_KEY`
 
-## Vercel 설정
+선택사항:
+
+- `GEMINI_MODEL` : 기본값은 `gemini-2.5-flash`
+
+## GitHub 업로드 후 Vercel 설정
 
 - Framework Preset: Vite
-- Build Command: npx vite build
-- Output Directory: dist
-- Install Command: npm install
-- Root Directory: `./`
+- Build Command: `npm run build`
+- Output Directory: `dist`
 
-## GitHub 업로드
+## API 구조
 
-```bash
-git init
-git add .
-git commit -m "first commit"
-git remote add origin 깃허브주소
-git branch -M main
-git push -u origin main
-```
+기존 `server.ts`에 있던 서버 기능을 Vercel Serverless Function 방식으로 분리했습니다.
+
+- `/api/config`
+- `/api/chat`
+- `/api/ocr/analyze`
+
+`server.ts`는 기존 참고용으로 남겨두었지만 Vercel 배포에서는 사용하지 않습니다.
