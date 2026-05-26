@@ -73,7 +73,6 @@ export default async function handler(req, res) {
         body: JSON.stringify({
           generationConfig: {
             temperature: 0.1,
-            responseMimeType: 'application/json'
           },
           contents: [
             {
