@@ -1,0 +1,8 @@
+{
+  "name": "매입매출 증빙관리",
+  "description": "개인사업자를 위한 매입매출 거래내역 대장 및 AI OCR 증빙 영수증/인보이스 자동 매칭 & 세무사 제출용 엑셀 보고서 생성 포털",
+  "requestFramePermissions": [
+    "camera"
+  ],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
