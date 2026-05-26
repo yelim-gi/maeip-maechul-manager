@@ -9,7 +9,7 @@ npm run dev
 ## Vercel 환경변수
 ```env
 GEMINI_API_KEY=발급받은키
-GEMINI_MODEL=gemini-2.0-flash
+GEMINI_MODEL=gemini-2.5-flash
 ```
 
 ## Vercel 설정
